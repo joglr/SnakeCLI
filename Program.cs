@@ -1,19 +1,35 @@
-﻿using System;
+﻿using System.Drawing;
+using System;
 using System.Threading;
 using System.Collections.Generic;
 using timers = System.Timers;
 using System.Text;
+using Pastel;
 
 namespace SnakeCLI
 {
     class Program
     {
-        char floorChar = (char) 46;
-        char snakeChar = (char) 35;
-        char foodChar = (char) 79;
-        char bombChar = '¤';
+        string floorChar = " ";
+        // string floorChar = "·";
+        string snakeChar = "■";
+        string foodChar = "●";
+        string bombChar = "¤";
 
-        private char[,] board;
+        Dictionary<string, ConsoleColor> colorMap = new Dictionary<string, ConsoleColor>() {
+                {"·", ConsoleColor.DarkGray},
+                {"■", ConsoleColor.Green},
+                {"●", ConsoleColor.Red},
+                {"│", ConsoleColor.Blue},
+                {"─", ConsoleColor.Blue},
+                {"┘", ConsoleColor.Blue},
+                {"└", ConsoleColor.Blue},
+                {"┌", ConsoleColor.Blue},
+                {"┐", ConsoleColor.Blue},
+                {"¤", ConsoleColor.Blue},
+        };
+
+        private string[,] board;
         private int boardWidth;
         private int boardHeight;
         private int points;
@@ -31,32 +47,38 @@ namespace SnakeCLI
 
         static void Main(string[] args)
         {
-            if (args.Length < 3) 
-            {
-                System.Console.WriteLine("ERROR Missing arguments. Arguments should be: <width> <height> <bombPct> <gamemode>?");
-                return;
-            }
-
             int width;
             int height;
             int bombPct;
 
-            try
-            {
-                width = int.Parse(args[0]);
-                height = int.Parse(args[1]);
-                bombPct = int.Parse(args[2]);
-            }
-            catch (Exception)
-            {
-                System.Console.WriteLine("ERROR Invalid arguments. Some argument was expected to be an integer, but was not.");
-                return;
+            if (args.Length == 0) {
+                width = 10;
+                height = 10;
+                bombPct = 15;
+            } else {
+                if (args.Length < 3)
+                {
+                    System.Console.WriteLine("ERROR Missing arguments. Arguments should be: <width> <height> <bombPct> <gamemode>?");
+                    return;
+                }
+
+                try
+                {
+                    width = int.Parse(args[0]);
+                    height = int.Parse(args[1]);
+                    bombPct = int.Parse(args[2]);
+                }
+                catch (Exception)
+                {
+                    System.Console.WriteLine("ERROR Invalid arguments. Some argument was expected to be an integer, but was not.");
+                    return;
+                }
             }
 
             bool deathWalls = false;
-            if(args.Length > 3) 
+            if (args.Length > 3)
             {
-                switch(args[3])
+                switch (args[3])
                 {
                     case "dw":
                         deathWalls = true;
@@ -64,17 +86,18 @@ namespace SnakeCLI
                     default:
                         throw new Exception("***Unknown gamemode");
                 }
-            } 
-            Program program = new Program(width, height, bombPct, deathWalls);       
+            }
+            CurrentProgram = new Program(width, height, bombPct, deathWalls);
 
-            while(true);
+            while (true) ;
         }
 
         public Program(int width, int height, int bombPct, bool deathWalls)
         {
+            Console.CursorVisible = false;
             boardWidth = width;
             boardHeight = height;
-            board = new char[boardWidth, boardHeight];
+            board = new string[boardWidth, boardHeight];
 
             this.bombPct = bombPct;
             this.deathWalls = deathWalls;
@@ -84,16 +107,21 @@ namespace SnakeCLI
 
             speedCurve = new SpeedCurve(50, 50, 400);
 
-            for(int x = 0; x < boardWidth; x++) {
-                for(int y = 0; y < boardHeight; y++) {
-                    board[x,y] = floorChar;
+            for (int x = 0; x < boardWidth; x++)
+            {
+                for (int y = 0; y < boardHeight; y++)
+                {
+                    board[x, y] = floorChar;
                 }
             }
 
             snake = new LinkedList<(int x, int y)>();
-            snake.AddFirst((4,5));
-            snake.AddLast((5,5));
+            var startX = width / 2;
+            var startY = height / 2;
+            snake.AddFirst((startX, startY));
+            snake.AddLast((startX + 1, startY));
             heading = Heading.EAST;
+
             requestHeading = null;
 
             SpawnFood();
@@ -112,12 +140,13 @@ namespace SnakeCLI
 
         public void DetectInput()
         {
-            while(true) {
+            while (true)
+            {
                 var input = Console.ReadKey(false).Key;
-                switch(input)
+                switch (input)
                 {
                     case ConsoleKey.Escape:
-                        GameOver();
+                        RequestGameOver();
                         break;
                     case ConsoleKey.UpArrow:
                         requestHeading = Heading.NORTH;
@@ -135,23 +164,31 @@ namespace SnakeCLI
             }
         }
 
+        static Program CurrentProgram;
+
+    public bool IsGameOver { get; private set; }
+
+    static void OnProcessExit(object sender, EventArgs e) {
+            CurrentProgram.RequestGameOver();
+        }
+
         private void SpawnFood()
         {
             bool validCell = false;
-            while(!validCell)
+            while (!validCell)
             {
                 int y = random.Next(boardHeight);
                 int x = random.Next(boardWidth);
-                var charAtPosition = board[x,y];
+                var charAtPosition = board[x, y];
                 int emptyCount = 0;
-                if (isEmpty(x-1,y)) emptyCount++;
-                if (isEmpty(x+1,y)) emptyCount++;
-                if (isEmpty(x,y-1)) emptyCount++;
-                if (isEmpty(x,y+1)) emptyCount++;
-                if(isEmpty(x,y) && emptyCount >= 2)
+                if (isEmpty(x - 1, y)) emptyCount++;
+                if (isEmpty(x + 1, y)) emptyCount++;
+                if (isEmpty(x, y - 1)) emptyCount++;
+                if (isEmpty(x, y + 1)) emptyCount++;
+                if (isEmpty(x, y) && emptyCount >= 2)
                 {
                     validCell = true;
-                    board[x,y] = foodChar;
+                    board[x, y] = foodChar;
                 }
             }
         }
@@ -160,9 +197,9 @@ namespace SnakeCLI
         {
             try
             {
-                if(board[x,y] == floorChar) return true;
+                if (board[x, y] == floorChar) return true;
                 else return false;
-            } 
+            }
             catch (Exception)
             {
                 return false;
@@ -172,17 +209,21 @@ namespace SnakeCLI
         private void SpawnBomb()
         {
             bool emptyCell = false;
-            while(!emptyCell)
+            while (!emptyCell)
             {
                 int y = random.Next(boardHeight);
                 int x = random.Next(boardWidth);
-                var charAtPosition = board[x,y];
-                if(charAtPosition == floorChar)
+                var charAtPosition = board[x, y];
+                if (charAtPosition == floorChar)
                 {
                     emptyCell = true;
-                    board[x,y] = bombChar;
+                    board[x, y] = bombChar;
                 }
             }
+        }
+
+        private void RequestGameOver() {
+            this.IsGameOver = true;
         }
 
         private void GameOver()
@@ -192,14 +233,21 @@ namespace SnakeCLI
                 t.Stop();
                 Console.WriteLine();
                 Console.WriteLine("GAME OVER!");
+                Console.CursorVisible = true;
                 Environment.Exit(0);
-            } catch (Exception e) {
+            }
+            catch (Exception e)
+            {
                 Console.Error.Write(e.InnerException);
             }
         }
 
         private void Update(object sender, System.Timers.ElapsedEventArgs e)
         {
+            if (IsGameOver) {
+                GameOver();
+                return;
+            }
             if (requestHeading == Heading.NORTH && heading != Heading.SOUTH) heading = Heading.NORTH;
             else if (requestHeading == Heading.SOUTH && heading != Heading.NORTH) heading = Heading.SOUTH;
             else if (requestHeading == Heading.EAST && heading != Heading.WEST) heading = Heading.EAST;
@@ -208,7 +256,7 @@ namespace SnakeCLI
 
             int nextPositionX = snake.First.Value.w;
             int nextPositionY = snake.First.Value.h;
-            switch(heading)
+            switch (heading)
             {
                 case Heading.NORTH:
                     nextPositionY -= 1;
@@ -229,24 +277,24 @@ namespace SnakeCLI
             int nextPositionYCalculated = Math.Abs(mod(nextPositionY, boardHeight));
             (int w, int h) nextPositionCalculatedTuple = (nextPositionXCalculated, nextPositionYCalculated);
 
-            char charAtNextPositon = board[nextPositionXCalculated, nextPositionYCalculated];
+            var charAtNextPositon = board[nextPositionXCalculated, nextPositionYCalculated];
             bool eating = false;
-            if(charAtNextPositon == foodChar) eating = true;
-            else if ((deathWalls && IsOutOfBound(nextPositionTuple)) || charAtNextPositon == snakeChar || charAtNextPositon == bombChar) GameOver();
+            if (charAtNextPositon == foodChar) eating = true;
+            else if ((deathWalls && IsOutOfBound(nextPositionTuple)) || charAtNextPositon == snakeChar || charAtNextPositon == bombChar) RequestGameOver();
 
             MoveTo(nextPositionCalculatedTuple, eating);
 
-            Console.SetCursorPosition(0,0);
+            Console.SetCursorPosition(0, 0);
             PrintBoard();
         }
 
         private void MoveTo((int w, int h) nextPosition, bool eating)
         {
             snake.AddFirst(nextPosition);
-            board[snake.First.Value.w,snake.First.Value.h] = snakeChar;
-            if(!eating)
+            board[snake.First.Value.w, snake.First.Value.h] = snakeChar;
+            if (!eating)
             {
-                board[snake.Last.Value.w,snake.Last.Value.h] = floorChar;
+                board[snake.Last.Value.w, snake.Last.Value.h] = floorChar;
                 snake.RemoveLast();
             }
             else
@@ -254,13 +302,13 @@ namespace SnakeCLI
                 points++;
                 SpeedUp();
                 SpawnFood();
-                if(random.Next(100) < bombPct) SpawnBomb();
+                if (random.Next(100) < bombPct) SpawnBomb();
             }
         }
 
         private bool IsOutOfBound((int w, int h) nextPosition)
         {
-            if(nextPosition.w < 0 || nextPosition.w > boardWidth-1 || nextPosition.h < 0 || nextPosition.h > boardHeight-1) return true;
+            if (nextPosition.w < 0 || nextPosition.w > boardWidth - 1 || nextPosition.h < 0 || nextPosition.h > boardHeight - 1) return true;
             return false;
         }
 
@@ -271,25 +319,71 @@ namespace SnakeCLI
 
         private void PrintBoard()
         {
-            StringBuilder stringBuilder = new StringBuilder();
-            for(int y = 0; y < boardHeight; y++) {
-                for(int x = 0; x < boardWidth; x++) {
-                    stringBuilder.Append(board[x,y]);
-                }
-                stringBuilder.Append("\n");
+            if (deathWalls)
+            {
+                WritePiece("┌", WriteMode.Single);
+                WritePiece("─", WriteMode.Repeat, boardWidth * 2 + 1);
+                WritePiece("┐");
+                Console.WriteLine();
             }
-            stringBuilder.Append("\n");
-            stringBuilder.Append("Score: ");
-            stringBuilder.Append(points);
+            for (int y = 0; y < boardHeight; y++)
+            {
+                if (deathWalls) WritePiece("│");
+                for (int x = 0; x < boardWidth; x++)
+                {
+                    WritePiece(board[x, y]);
+                }
+                if (deathWalls) WritePiece("│", WriteMode.Single);
+                Console.WriteLine();
+            }
+            if (deathWalls)
+            {
+                WritePiece("└", WriteMode.Single);
+                WritePiece("─", WriteMode.Repeat, boardWidth * 2 + 1);
+                WritePiece("┘");
+            }
+            Console.WriteLine();
+            Console.Write("Score: ");
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write(points);
+            Console.ResetColor();
 
-            stringBuilder.Append("\n");
-            stringBuilder.Append("TBU: ");
-            stringBuilder.Append(Math.Round(Convert.ToDecimal(speedCurve.CalculateY(points)), 2));
+            Console.WriteLine();
+            Console.Write("TBU: ");
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write(Math.Round(Convert.ToDecimal(speedCurve.CalculateY(points)), 2));
+            Console.ResetColor();
 
-            Console.WriteLine(stringBuilder);
+            Console.WriteLine();
         }
 
-        int mod(int x, int m) {return (x%m + m)%m;}
+    private void WritePiece(string v, WriteMode writeMode = WriteMode.Spaced, int times = 1)
+    {
+        if (colorMap.TryGetValue(v, out ConsoleColor color))
+        {
+            // v = v.Pastel(Color.FromName(color.ToString()));
+            Console.ForegroundColor = color;
+        }
+        if (writeMode == WriteMode.Single) Console.Write(v);
+        if (writeMode == WriteMode.Double) Console.Write(v + v);
+        if (writeMode == WriteMode.Spaced) Console.Write(v + " ");
+        if (writeMode == WriteMode.Repeat) {
+            for (int x = 0; x < times; x++)
+            {
+                Console.Write(v);
+            }
+        }
+        Console.ResetColor();
+    }
+
+    enum WriteMode {
+        Single,
+        Spaced,
+        Double,
+        Repeat
+    }
+
+    int mod(int x, int m) { return (x % m + m) % m; }
     }
 
     public enum Heading
